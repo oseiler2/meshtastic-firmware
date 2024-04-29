@@ -42,18 +42,35 @@ static void IRAM_ATTR onTimer()
 bool scheduleHWCallback(PendableFunction callback, void *param1, uint32_t param2, uint32_t delayMsec)
 {
     if (!timer) {
+#if ESP_ARDUINO_VERSION_MAJOR == 2
         timer = timerBegin(0, 80, true); // one usec per tick (main clock is 80MhZ on ESP32)
+#elif ESP_ARDUINO_VERSION_MAJOR == 3
+        timer = timerBegin(0); // one usec per tick (main clock is 80MhZ on ESP32)
+#endif
+
         assert(timer);
+
+#if ESP_ARDUINO_VERSION_MAJOR == 2
         timerAttachInterrupt(timer, &onTimer, true);
+#elif ESP_ARDUINO_VERSION_MAJOR == 3
+        timerAttachInterrupt(timer, &onTimer);
+#endif
+
     }
 
     tCallback = callback;
     tParam1 = param1;
     tParam2 = param2;
 
+#if ESP_ARDUINO_VERSION_MAJOR == 2
     timerAlarmWrite(timer, delayMsec * 1000UL, false); // Do not reload, we want it to be a single shot timer
     timerRestart(timer);
     timerAlarmEnable(timer);
+#elif ESP_ARDUINO_VERSION_MAJOR == 3
+    timerAlarm(timer, delayMsec * 1000UL, false, 0ULL);
+    timerRestart(timer);
+#endif
+
     return true;
 }
 
