@@ -354,7 +354,9 @@ template <typename T> bool SX126xInterface<T>::sendFanet(
         snprintf(buf + (3*i), 4, "%02x:", data[i]);
     }
     buf[len*3-1] = 0;
-    LOG_DEBUG("sendFanet len:%u [%s]", len, buf);
+    LOG_DEBUG("sendFanet f:%.3f bw:%.3f sf:%u cr:%u sw:%02x pow:%i preLen:%u len:%u [%s]", 
+        pFreq, pBw, pSf, pCr, pSyncWord, pPower, pPreambleLength,
+        len, buf);
     free(buf);
 
     radioLock->lock();
