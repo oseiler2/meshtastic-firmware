@@ -652,8 +652,8 @@ bit 0-23	Longitude   (Absolute, see below)
                 uint8_t data[15];
                 data[0] = FANET_TYPE_SERVICE;
                 data[1] = 0xfc;  // unregistered device
-                data[2] = myNodeInfo->user.macaddr[0];
-                data[3] = myNodeInfo->user.macaddr[1];
+                data[2] = nodeDB->getNodeNum() & 0xff;
+                data[3] = (nodeDB->getNodeNum() >> 8) & 0xff;
 
                 // Header (wind + battery flags)
                 data[4] = FANET_WIND_FLAG | FANET_SOC_FLAG;
