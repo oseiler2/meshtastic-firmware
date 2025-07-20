@@ -420,11 +420,24 @@ template <typename T> bool SX126xInterface<T>::sendFanet(
         LOG_ERROR("SX126X setOutputPower %s%d", radioLibErr, err);
     assert(err == RADIOLIB_ERR_NONE);
 
-    err = lora.transmit(data, len);
-    if (err != RADIOLIB_ERR_NONE)
-        LOG_ERROR("SX126X transmit %s%d", radioLibErr, err);
-    else
-        LOG_DEBUG("sendFanet success!");
+    const uint8_t MAX_CAD_ITERATIONS = 3;
+    uint8_t j = 0;
+    do {
+        err = radio.scanChannel();
+        if (err == RADIOLIB_LORA_DETECTED) LOG_DEBUG("Channel active (%u/%u)", j, MAX_CAD_ITERATIONS);
+    }
+    while (err != RADIOLIB_CHANNEL_FREE && (j++ < MAX_CAD_ITERATIONS))
+
+    if (err == RADIOLIB_CHANNEL_FREE) {
+        // no activity was detected, channel is free
+        err = lora.transmit(data, len);
+        if (err != RADIOLIB_ERR_NONE)
+            LOG_ERROR("SX126X transmit %s%d", radioLibErr, err);
+        else
+            LOG_DEBUG("sendFanet success!");
+    } else {
+         LOG_WARN("Channel still active after listening %u times - not sending", MAX_CAD_ITERATIONS);
+    }
 
     RadioLibInterface::setStandby(); // clear power status
 
