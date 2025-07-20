@@ -468,13 +468,20 @@ void SerialModule::processWXSerial()
     !defined(ELECROW_ThinkNode_M1)
     static unsigned int lastAveraged = 0;
     static unsigned int averageIntervalMillis = 300000; // 5 minutes hard coded.
-    static double dir_sum_sin = 0;
-    static double dir_sum_cos = 0;
-    static float velSum = 0;
-    static float gust = 0;
-    static float lull = -1;
-    static int velCount = 0;
-    static int dirCount = 0;
+    static double dir_sum_sinMesh = 0;
+    static double dir_sum_sinFanet = 0;
+    static double dir_sum_cosMesh = 0;
+    static double dir_sum_cosFanet = 0;
+    static float velSumMesh = 0;
+    static float velSumFanet = 0;
+    static float gustMesh = 0;
+    static float gustFanet = 0;
+    static float lullMesh = -1;
+    static float lullFanet = -1;
+    static int velCountMesh = 0;
+    static int velCountFanet = 0;
+    static int dirCountMesh = 0;
+    static int dirCountFanet = 0;
     static char windDir[4] = "xxx";   // Assuming windDir is 3 characters long + null terminator
     static char windVel[5] = "xx.x";  // Assuming windVel is 4 characters long + null terminator
     static char windGust[5] = "xx.x"; // Assuming windGust is 4 characters long + null terminator
@@ -526,24 +533,35 @@ void SerialModule::processWXSerial()
                             if (parsed.name == "WindDir") {
                                 strlcpy(windDir, parsed.value.c_str(), sizeof(windDir));
                                 double radians = GeoCoord::toRadians(strtof(windDir, nullptr));
-                                dir_sum_sin += sin(radians);
-                                dir_sum_cos += cos(radians);
-                                dirCount++;
+                                dir_sum_sinMesh += sin(radians);
+                                dir_sum_sinFanet += sin(radians);
+                                dir_sum_cosMesh += cos(radians);
+                                dir_sum_cosFanet += cos(radians);
+                                dirCountMesh++;
+                                dirCountFanet++;
                                 gotwind = true;
                             } else if (parsed.name == "WindSpeed") {
                                 strlcpy(windVel, parsed.value.c_str(), sizeof(windVel));
                                 float newv = strtof(windVel, nullptr);
-                                velSum += newv;
-                                velCount++;
-                                if (newv < lull || lull == -1) {
-                                    lull = newv;
+                                velSumMesh += newv;
+                                velSumFanet += newv;
+                                velCountMesh++;
+                                velCountFanet++;
+                                if (newv < lullMesh || lullMesh == -1) {
+                                    lullMesh = newv;
+                                }
+                                if (newv < lullFanet || lullFanet == -1) {
+                                    lullFanet = newv;
                                 }
                                 gotwind = true;
                             } else if (parsed.name == "WindGust") {
                                 strlcpy(windGust, parsed.value.c_str(), sizeof(windGust));
                                 float newg = strtof(windGust, nullptr);
-                                if (newg > gust) {
-                                    gust = newg;
+                                if (newg > gustMesh) {
+                                    gustMesh = newg;
+                                }
+                                if (newg > gustFanet) {
+                                    gustFanet = newg;
                                 }
                                 gotwind = true;
                             } else if (parsed.name == "BatVoltage") {
@@ -610,10 +628,10 @@ bit 0-23	Longitude   (Absolute, see below)
 #define  FANET_WIND_FLAG       bit(5)
 #define  FANET_SOC_FLAG        bit(1)
 
-            float velAvg = 1.0 * velSum / velCount;
+            float velAvg = 1.0 * velSumFanet / velCountFanet;
 
-            double avgSin = dir_sum_sin / dirCount;
-            double avgCos = dir_sum_cos / dirCount;
+            double avgSin = dir_sum_sinFanet / dirCountFanet;
+            double avgCos = dir_sum_cosFanet / dirCountFanet;
 
             double avgRadians = atan2(avgSin, avgCos);
             float dirAvg = GeoCoord::toDegrees(avgRadians);
@@ -649,7 +667,7 @@ bit 0-23	Longitude   (Absolute, see below)
                 // Wind data
                 data[11] = (uint8_t) (dirAvg * 256 / 360);
                 data[12] = (velAvg >= 25.4) ? 0x80 | (uint8_t)(velAvg) : (uint8_t)(velAvg * 5);
-                data[13] = (gust   >= 25.4) ? 0x80 | (uint8_t)(gust)   : (uint8_t)(gust   * 5);
+                data[13] = (gustFanet >= 25.4) ? 0x80 | (uint8_t)(gustFanet) : (uint8_t)(gustFanet * 5);
             
                 // Battery
                 data[14] = (uint8_t)(((uint16_t)soc * 0x0f) / 100);
@@ -657,7 +675,7 @@ bit 0-23	Longitude   (Absolute, see below)
                 LOG_DEBUG("Raw FANET data lat: %i lon: %i dir: %u vel: %x gust: %.1f bat: %u", 
                     myNodeInfo->position.latitude_i,
                     myNodeInfo->position.longitude_i,
-                    dirAvg, velAvg, gust, soc
+                    dirAvg, velAvg, gustFanet, soc
                 );
 
                 LOG_DEBUG("Sending FANET weather [%x:%x:%02x] lat: %i lon: %i dir: %u vel: %x gust: %x bat: %u", 
@@ -677,19 +695,19 @@ bit 0-23	Longitude   (Absolute, see below)
                 rIf->sendFanet(f, bw, sf, cr, syncWord, power, preambleLength, data, sizeof(data)/sizeof(uint8_t));
 
                 // reset counters and gust/lull
-                velSum = velCount = dirCount = 0;
-                dir_sum_sin = dir_sum_cos = 0;
-                gust = 0;
-                lull = -1;
+                velSumFanet = velCountFanet = dirCountFanet = 0;
+                dir_sum_sinFanet = dir_sum_cosFanet = 0;
+                gustFanet = 0;
+                lullFanet = -1;
             }
         }
     }
     if (gotwind && !Throttle::isWithinTimespanMs(lastAveraged, averageIntervalMillis)) {
         // calculate averages and send to the mesh
-        float velAvg = 1.0 * velSum / velCount;
+        float velAvg = 1.0 * velSumMesh / velCountMesh;
 
-        double avgSin = dir_sum_sin / dirCount;
-        double avgCos = dir_sum_cos / dirCount;
+        double avgSin = dir_sum_sinMesh / dirCountMesh;
+        double avgCos = dir_sum_cosMesh / dirCountMesh;
 
         double avgRadians = atan2(avgSin, avgCos);
         float dirAvg = GeoCoord::toDegrees(avgRadians);
@@ -716,7 +734,7 @@ bit 0-23	Longitude   (Absolute, see below)
             capVoltageF > batVoltageF ? capVoltageF : batVoltageF; // send the larger of the two voltage values.
         m.variant.environment_metrics.has_voltage = true;
 
-        m.variant.environment_metrics.wind_gust = gust;
+        m.variant.environment_metrics.wind_gust = gustMesh;
         m.variant.environment_metrics.has_wind_gust = true;
 
         m.variant.environment_metrics.rainfall_24h = rainSum;
@@ -726,9 +744,9 @@ bit 0-23	Longitude   (Absolute, see below)
         m.variant.environment_metrics.rainfall_1h = rain;
         m.variant.environment_metrics.has_rainfall_1h = true;
 
-        if (lull == -1)
-            lull = 0;
-        m.variant.environment_metrics.wind_lull = lull;
+        if (lullMesh == -1)
+            lullMesh = 0;
+        m.variant.environment_metrics.wind_lull = lullMesh;
         m.variant.environment_metrics.has_wind_lull = true;
 
         LOG_INFO("WS8X Transmit speed=%fm/s, direction=%d , lull=%f, gust=%f, voltage=%f temperature=%f",
@@ -739,10 +757,10 @@ bit 0-23	Longitude   (Absolute, see below)
         sendTelemetry(m);
 
         // reset counters and gust/lull
-//        velSum = velCount = dirCount = 0;
-//        dir_sum_sin = dir_sum_cos = 0;
-//        gust = 0;
-//        lull = -1;
+        velSumMesh = velCountMesh = dirCountMesh = 0;
+        dir_sum_sinMesh = dir_sum_cosMesh = 0;
+        gustMesh = 0;
+        lullMesh = -1;
     }
 #endif
     return;
