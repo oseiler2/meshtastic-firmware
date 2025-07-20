@@ -670,7 +670,7 @@ bit 0-23	Longitude   (Absolute, see below)
                 float f = 920.8;
                 float bw = 500;
                 uint8_t sf = 7;
-                uint8_t cr = 6;
+                uint8_t cr = 5;
                 uint8_t syncWord = 0xf1;
                 int8_t power = config.lora.tx_power;
                 uint16_t preambleLength = 16;
