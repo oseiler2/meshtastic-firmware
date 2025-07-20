@@ -625,6 +625,7 @@ bit 0-23	Longitude   (Absolute, see below)
 */
 
 #define  FANET_TYPE_SERVICE    4
+#define  FANET_TEMP_FLAG       bit(6)
 #define  FANET_WIND_FLAG       bit(5)
 #define  FANET_SOC_FLAG        bit(1)
 
@@ -649,7 +650,7 @@ bit 0-23	Longitude   (Absolute, see below)
             if (!myNodeInfo || !myNodeInfo->has_position) {
                 LOG_DEBUG("No GPS fix for FANET weather");
             } else {
-                uint8_t data[15];
+                uint8_t data[16];
                 data[0] = FANET_TYPE_SERVICE;
                 data[1] = 0xfc;  // unregistered device
                 data[2] = nodeDB->getNodeNum() & 0xff;
@@ -664,13 +665,16 @@ bit 0-23	Longitude   (Absolute, see below)
                 memcpy(&data[5], &lat_i, 3);
                 memcpy(&data[8], &lon_i, 3);
             
+                // Temp
+                data[11] = (int8_t)(temperatureF * 2);
+
                 // Wind data
-                data[11] = (uint8_t) (dirAvg * 256 / 360);
-                data[12] = (velAvg >= 25.4) ? 0x80 | (uint8_t)(velAvg) : (uint8_t)(velAvg * 5);
-                data[13] = (gustFanet >= 25.4) ? 0x80 | (uint8_t)(gustFanet) : (uint8_t)(gustFanet * 5);
+                data[12] = (uint8_t) (dirAvg * 256 / 360);
+                data[13] = (velAvg >= 25.4) ? 0x80 | (uint8_t)(velAvg) : (uint8_t)(velAvg * 5);
+                data[14] = (gustFanet >= 25.4) ? 0x80 | (uint8_t)(gustFanet) : (uint8_t)(gustFanet * 5);
             
                 // Battery
-                data[14] = (uint8_t)(((uint16_t)soc * 0x0f) / 100);
+                data[15] = (uint8_t)(((uint16_t)soc * 0x0f) / 100);
         
                 LOG_DEBUG("Raw FANET data lat: %i lon: %i dir: %u vel: %x gust: %.1f bat: %u", 
                     myNodeInfo->position.latitude_i,
