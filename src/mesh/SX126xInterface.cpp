@@ -423,10 +423,10 @@ template <typename T> bool SX126xInterface<T>::sendFanet(
     const uint8_t MAX_CAD_ITERATIONS = 3;
     uint8_t j = 0;
     do {
-        err = radio.scanChannel();
+        err = lora.scanChannel();
         if (err == RADIOLIB_LORA_DETECTED) LOG_DEBUG("Channel active (%u/%u)", j, MAX_CAD_ITERATIONS);
     }
-    while (err != RADIOLIB_CHANNEL_FREE && (j++ < MAX_CAD_ITERATIONS))
+    while (err != RADIOLIB_CHANNEL_FREE && (j++ < MAX_CAD_ITERATIONS));
 
     if (err == RADIOLIB_CHANNEL_FREE) {
         // no activity was detected, channel is free
