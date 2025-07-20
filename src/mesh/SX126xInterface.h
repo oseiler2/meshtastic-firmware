@@ -71,5 +71,7 @@ template <class T> class SX126xInterface : public RadioLibInterface
     virtual void addReceiveMetadata(meshtastic_MeshPacket *mp) override;
 
     virtual void setStandby() override;
+
+    virtual bool sendFanet(float freq, float bw, uint8_t sf, uint8_t cr, uint8_t syncWord, int8_t power, uint16_t preambleLength, const uint8_t* data, size_t len) override;
 };
 #endif

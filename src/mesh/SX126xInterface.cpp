@@ -343,3 +343,89 @@ template <typename T> bool SX126xInterface<T>::sleep()
     return true;
 }
 #endif
+
+template <typename T> bool SX126xInterface<T>::sendFanet(
+    float pFreq, float pBw, uint8_t pSf, uint8_t pCr, uint8_t pSyncWord, int8_t pPower, uint16_t pPreambleLength, 
+    const uint8_t* data, size_t len) {
+
+    char* buf = (char*)malloc(len*3 + 1);
+    memset(buf, (int)' ', len*3);
+    for (uint8_t i=0; i<len; i++){
+        snprintf(buf + (3*i), 4, "%02x:", data[i]);
+    }
+    buf[len*3-1] = 0;
+    LOG_DEBUG("sendFanet len:%u [%s]", len, buf);
+    free(buf);
+
+    radioLock->lock();
+    int err;
+
+    if (disabled || !config.lora.tx_enabled) {
+        LOG_WARN("Not sending because LoRa Tx disabled");
+        radioLock->unlock();
+        return false;
+    } 
+
+    err = lora.standby();
+
+    if (err != RADIOLIB_ERR_NONE)
+        LOG_DEBUG("SX126x standby %s%d", radioLibErr, err);
+    assert(err == RADIOLIB_ERR_NONE);
+
+    isReceiving = false; // If we were receiving, not any more
+    activeReceiveStart = 0;
+    disableInterrupt();
+    completeSending(); // If we were sending, not anymore
+    RadioLibInterface::setStandby(); // clear power status
+    RadioLibInterface::configHardwareForSend();
+
+    err = lora.setSpreadingFactor(pSf);
+    if (err != RADIOLIB_ERR_NONE)
+        RECORD_CRITICALERROR(meshtastic_CriticalErrorCode_INVALID_RADIO_SETTING);
+
+    err = lora.setBandwidth(pBw);
+    if (err != RADIOLIB_ERR_NONE)
+        RECORD_CRITICALERROR(meshtastic_CriticalErrorCode_INVALID_RADIO_SETTING);
+
+    err = lora.setCodingRate(pCr);
+    if (err != RADIOLIB_ERR_NONE)
+        RECORD_CRITICALERROR(meshtastic_CriticalErrorCode_INVALID_RADIO_SETTING);
+
+    err = lora.setSyncWord(pSyncWord);
+    if (err != RADIOLIB_ERR_NONE)
+        LOG_ERROR("SX126X setSyncWord %s%d", radioLibErr, err);
+    assert(err == RADIOLIB_ERR_NONE);
+
+    err = lora.setCurrentLimit(currentLimit);
+    if (err != RADIOLIB_ERR_NONE)
+        LOG_ERROR("SX126X setCurrentLimit %s%d", radioLibErr, err);
+    assert(err == RADIOLIB_ERR_NONE);
+
+    err = lora.setPreambleLength(pPreambleLength);
+    if (err != RADIOLIB_ERR_NONE)
+        LOG_ERROR("SX126X setPreambleLength %s%d", radioLibErr, err);
+    assert(err == RADIOLIB_ERR_NONE);
+
+    err = lora.setFrequency(pFreq);
+    if (err != RADIOLIB_ERR_NONE)
+        RECORD_CRITICALERROR(meshtastic_CriticalErrorCode_INVALID_RADIO_SETTING);
+
+    if (pPower > SX126X_MAX_POWER) // This chip has lower power limits than some
+        pPower = SX126X_MAX_POWER;
+
+    err = lora.setOutputPower(pPower);
+    if (err != RADIOLIB_ERR_NONE)
+        LOG_ERROR("SX126X setOutputPower %s%d", radioLibErr, err);
+    assert(err == RADIOLIB_ERR_NONE);
+
+    err = lora.transmit(data, len);
+
+    RadioLibInterface::setStandby(); // clear power status
+
+    radioLock->unlock();
+
+    // back to Mesh LORA
+    reconfigure();
+
+    return err == RADIOLIB_ERR_NONE;
+}

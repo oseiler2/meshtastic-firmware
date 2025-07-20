@@ -8,6 +8,9 @@
 #include "configuration.h"
 #include <Arduino.h>
 #include <Throttle.h>
+#include <RadioInterface.h>
+
+extern RadioInterface *rIf;
 
 /*
     SerialModule
@@ -451,6 +454,8 @@ ParsedLine parseLine(const char *line)
     return result;
 }
 
+static uint32_t lastFanetSend = 0;
+
 /**
  * Process the received weather station serial data, extract wind, voltage, and temperature information,
  * calculate averages and send telemetry data over the mesh network.
@@ -576,6 +581,108 @@ void SerialModule::processWXSerial()
 
         LOG_INFO("WS8X : %i %.1fg%.1f %.1fv %.1fv %.1fC rain: %.1f, %i sum", atoi(windDir), strtof(windVel, nullptr),
                  strtof(windGust, nullptr), batVoltageF, capVoltageF, temperatureF, rain, rainSum);
+
+        if ((millis() - lastFanetSend > 40000)) {
+            lastFanetSend = millis();
+
+/*
+Service (Type = 4)
+[recommended interval: 40sec]
+
+[Byte 0]	Header	(additional payload will be added in order 6 to 1, followed by Extended Header payload 7 to 0 once defined)
+bit 7		Internet Gateway (no additional payload required, other than a position)
+bit 6		Temperature (+1byte in 0.5 degree, 2-Complement)
+bit 5		Wind (+3byte: 1byte Heading in 360/256 degree, 1byte speed and 1byte gusts in 0.2km/h (each: bit 7 scale 5x or 1x, bit 0-6))
+bit 4		Humidity (+1byte: in 0.4% (%rh*10/4))
+bit 3		Barometric pressure normailized (+2byte: in 10Pa, offset by 430hPa, unsigned little endian (hPa-430)*10)
+bit 2		Support for Remote Configuration (Advertisement)
+bit 1		State of Charge  (+1byte lower 4 bits: 0x00 = 0%, 0x01 = 6.666%, .. 0x0F = 100%)
+bit 0		Extended Header (+1byte directly after byte 0)
+		The following is only mandatory if no additional data will be added. Broadcasting only the gateway/remote-cfg flag doesn't require pos information. 
+[Byte 1-3 or Byte 2-4]	Position	(Little Endian, 2-Complement)		
+bit 0-23	Latitude	(Absolute, see below)
+[Byte 4-6 or Byte 5-7]	Position	(Little Endian, 2-Complement)
+bit 0-23	Longitude   (Absolute, see below)
++ additional data according to the sub header order (bit 6 down to 1)
+*/
+
+#define  FANET_TYPE_SERVICE    4
+#define  FANET_WIND_FLAG       bit(5)
+#define  FANET_SOC_FLAG        bit(1)
+
+            float velAvg = 1.0 * velSum / velCount;
+
+            double avgSin = dir_sum_sin / dirCount;
+            double avgCos = dir_sum_cos / dirCount;
+
+            double avgRadians = atan2(avgSin, avgCos);
+            float dirAvg = GeoCoord::toDegrees(avgRadians);
+
+            if (dirAvg < 0) {
+                dirAvg += 360.0;
+            }
+            lastAveraged = millis();
+
+            // Get battery state
+            uint8_t soc = powerStatus->getBatteryChargePercent();
+        
+            // Get position
+            const meshtastic_NodeInfoLite *myNodeInfo = nodeDB->getMeshNode(nodeDB->getNodeNum());
+            if (!myNodeInfo || !myNodeInfo->has_position) {
+                LOG_DEBUG("No GPS fix for FANET weather");
+            } else {
+                uint8_t data[15];
+                data[0] = FANET_TYPE_SERVICE;
+                data[1] = 0xfc;  // unregistered device
+                data[2] = myNodeInfo->user.macaddr[0];
+                data[3] = myNodeInfo->user.macaddr[1];
+
+                // Header (wind + battery flags)
+                data[4] = FANET_WIND_FLAG | FANET_SOC_FLAG;
+            
+                // Position (3 bytes lat, 3 bytes lon)
+                int32_t lat_i = (int32_t)(myNodeInfo->position.latitude_i * 1e-7f * 93206.0f);
+                int32_t lon_i = (int32_t)(myNodeInfo->position.longitude_i * 1e-7f * 46603.0f);
+                memcpy(&data[5], &lat_i, 3);
+                memcpy(&data[8], &lon_i, 3);
+            
+                // Wind data
+                data[11] = (uint8_t) (dirAvg * 256 / 360);
+                data[12] = (velAvg >= 25.4) ? 0x80 | (uint8_t)(velAvg) : (uint8_t)(velAvg * 5);
+                data[13] = (gust   >= 25.4) ? 0x80 | (uint8_t)(gust)   : (uint8_t)(gust   * 5);
+            
+                // Battery
+                data[14] = (uint8_t)(((uint16_t)soc * 0x0f) / 100);
+        
+                LOG_DEBUG("Raw FANET data lat: %i lon: %i dir: %u vel: %x gust: %.1f bat: %u", 
+                    myNodeInfo->position.latitude_i,
+                    myNodeInfo->position.longitude_i,
+                    dirAvg, velAvg, gust, soc
+                );
+
+                LOG_DEBUG("Sending FANET weather [%x:%x:%02x] lat: %i lon: %i dir: %u vel: %x gust: %x bat: %u", 
+                    data[0], data[1], (uint16_t)data[2]<<8 | data[3],
+                    (int32_t)(myNodeInfo->position.latitude_i * 1e-7f * 93206.0f) >> 8,
+                    (int32_t)(myNodeInfo->position.longitude_i * 1e-7f * 46603.0f) >> 8,
+                    data[11], data[12], data[13], data[14] * 0x0f
+                );
+
+                float f = 920.8;
+                float bw = 500;
+                uint8_t sf = 7;
+                uint8_t cr = 6;
+                uint8_t syncWord = 0xf1;
+                int8_t power = config.lora.tx_power;
+                uint16_t preambleLength = 16;
+                rIf->sendFanet(f, bw, sf, cr, syncWord, power, preambleLength, data, sizeof(data)/sizeof(uint8_t));
+
+                // reset counters and gust/lull
+                velSum = velCount = dirCount = 0;
+                dir_sum_sin = dir_sum_cos = 0;
+                gust = 0;
+                lull = -1;
+            }
+        }
     }
     if (gotwind && !Throttle::isWithinTimespanMs(lastAveraged, averageIntervalMillis)) {
         // calculate averages and send to the mesh
@@ -590,7 +697,7 @@ void SerialModule::processWXSerial()
         if (dirAvg < 0) {
             dirAvg += 360.0;
         }
-        lastAveraged = millis();
+//        lastAveraged = millis();
 
         // make a telemetry packet with the data
         meshtastic_Telemetry m = meshtastic_Telemetry_init_zero;
@@ -632,10 +739,10 @@ void SerialModule::processWXSerial()
         sendTelemetry(m);
 
         // reset counters and gust/lull
-        velSum = velCount = dirCount = 0;
-        dir_sum_sin = dir_sum_cos = 0;
-        gust = 0;
-        lull = -1;
+//        velSum = velCount = dirCount = 0;
+//        dir_sum_sin = dir_sum_cos = 0;
+//        gust = 0;
+//        lull = -1;
     }
 #endif
     return;

@@ -6,6 +6,7 @@
 #include "PointerQueue.h"
 #include "airtime.h"
 #include "error.h"
+#include "concurrency/Lock.h" 
 
 #define MAX_TX_QUEUE 16 // max number of packets which can be waiting for transmission
 
@@ -109,6 +110,8 @@ class RadioInterface
      */
     void deliverToReceiver(meshtastic_MeshPacket *p);
 
+    concurrency::Lock *radioLock;
+
   public:
     /** pool is the pool we will alloc our rx packets from
      */
@@ -211,6 +214,8 @@ class RadioInterface
 
     // Whether we use the default frequency slot given our LoRa config (region and modem preset)
     static bool uses_default_frequency_slot;
+
+    virtual bool sendFanet(float freq, float bw, uint8_t sf, uint8_t cr, uint8_t syncWord, int8_t power, uint16_t preambleLength, const uint8_t* data, size_t len) { return false; }
 
   protected:
     int8_t power = 17; // Set by applyModemConfig()
