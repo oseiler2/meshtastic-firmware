@@ -421,6 +421,10 @@ template <typename T> bool SX126xInterface<T>::sendFanet(
     assert(err == RADIOLIB_ERR_NONE);
 
     err = lora.transmit(data, len);
+    if (err != RADIOLIB_ERR_NONE)
+        LOG_ERROR("SX126X transmit %s%d", radioLibErr, err);
+    else
+        LOG_DEBUG("sendFanet success!");
 
     RadioLibInterface::setStandby(); // clear power status
 
