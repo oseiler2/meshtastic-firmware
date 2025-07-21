@@ -657,7 +657,7 @@ bit 0-23	Longitude   (Absolute, see below)
                 data[3] = (nodeDB->getNodeNum() >> 8) & 0xff;
 
                 // Header (wind + battery flags)
-                data[4] = FANET_WIND_FLAG | FANET_SOC_FLAG;
+                data[4] = FANET_TEMP_FLAG | FANET_WIND_FLAG | FANET_SOC_FLAG;
             
                 // Position (3 bytes lat, 3 bytes lon)
                 int32_t lat_i = (int32_t)(myNodeInfo->position.latitude_i * 1e-7f * 93206.0f);
@@ -676,17 +676,17 @@ bit 0-23	Longitude   (Absolute, see below)
                 // Battery
                 data[15] = (uint8_t)(((uint16_t)soc * 0x0f) / 100);
         
-                LOG_DEBUG("Raw FANET data lat: %i lon: %i dir: %u vel: %x gust: %.1f bat: %u", 
+                LOG_DEBUG("Raw FANET data lat: %i lon: %i temp: %.1f dir: %u vel: %x gust: %.1f bat: %u", 
                     myNodeInfo->position.latitude_i,
                     myNodeInfo->position.longitude_i,
-                    dirAvg, velAvg, gustFanet, soc
+                    temperatureF, dirAvg, velAvg, gustFanet, soc
                 );
 
-                LOG_DEBUG("Sending FANET weather [%x:%x:%02x] lat: %i lon: %i dir: %u vel: %x gust: %x bat: %u", 
+                LOG_DEBUG("Sending FANET weather [%x:%x:%02x] lat: %i lon: %i temp: %i dir: %u vel: %x gust: %x bat: %u", 
                     data[0], data[1], (uint16_t)data[2]<<8 | data[3],
                     (int32_t)(myNodeInfo->position.latitude_i * 1e-7f * 93206.0f) >> 8,
                     (int32_t)(myNodeInfo->position.longitude_i * 1e-7f * 46603.0f) >> 8,
-                    data[11], data[12], data[13], data[14] * 0x0f
+                    data[11], data[12], data[13], data[14], data[15] * 0x0f
                 );
 
                 float f = 920.8;
@@ -695,7 +695,7 @@ bit 0-23	Longitude   (Absolute, see below)
                 uint8_t cr = 5;
                 uint8_t syncWord = 0xf1;
                 int8_t power = config.lora.tx_power;
-                uint16_t preambleLength = 16;
+                uint16_t preambleLength = 10;
                 rIf->sendFanet(f, bw, sf, cr, syncWord, power, preambleLength, data, sizeof(data)/sizeof(uint8_t));
 
                 // reset counters and gust/lull
