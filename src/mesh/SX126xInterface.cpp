@@ -348,6 +348,8 @@ template <typename T> bool SX126xInterface<T>::sendFanet(
     float pFreq, float pBw, uint8_t pSf, uint8_t pCr, uint8_t pSyncWord, int8_t pPower, uint16_t pPreambleLength, 
     const uint8_t* data, size_t len) {
 
+    uint32_t startTime = millis();
+
     char* buf = (char*)malloc(len*3 + 1);
     memset(buf, (int)' ', len*3);
     for (uint8_t i=0; i<len; i++){
@@ -445,6 +447,8 @@ template <typename T> bool SX126xInterface<T>::sendFanet(
 
     // back to Mesh LORA
     reconfigure();
+
+    LOG_DEBUG("sendFanet took %u msec", millis()-startTime);
 
     return err == RADIOLIB_ERR_NONE;
 }
