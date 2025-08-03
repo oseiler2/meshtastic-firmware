@@ -719,7 +719,7 @@ bit 0-23	Longitude   (Absolute, see below)
         if (dirAvg < 0) {
             dirAvg += 360.0;
         }
-//        lastAveraged = millis();
+        lastAveraged = millis();
 
         // make a telemetry packet with the data
         meshtastic_Telemetry m = meshtastic_Telemetry_init_zero;
